@@ -1,0 +1,239 @@
+server:
+  port: 8084
+
+spring:
+  application:
+    name: API-GATEWAY
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 60000
+
+  cloud:
+    gateway:
+      server:
+        webflux:
+          httpclient:
+            connect-timeout: 30000
+            response-timeout: 30s
+          routes:
+            - id: USER-SERVICE
+              uri: lb://USER-SERVICE
+              predicates:
+                - Path=/user-service/**
+
+              filters:
+                - name: RequestRateLimiter
+                  args:
+                    key-resolver: "#{@ipKeyResolver}"
+                    redis-rate-limiter.replenishRate: 10
+                    redis-rate-limiter.burstCapacity: 20
+                    redis-rate-limiter.requestedTokens: 1
+
+                - name: Retry
+                  args:
+                    retries: 3
+                    methods:
+                      - GET
+                    exceptions:
+                      - java.io.IOException
+                      - java.util.concurrent.TimeoutException
+                    statuses:
+                      - BAD_GATEWAY
+                      - SERVICE_UNAVAILABLE
+                      - GATEWAY_TIMEOUT
+                    backoff:
+                      firstBackoff: 200ms
+                      maxBackoff: 10s
+                      factor: 2
+                      basedOnPreviousValue: true
+
+              # This is for circuit breaker
+                - name: CircuitBreaker
+                  args:
+                    name: userServiceCircuitBreaker
+                    fallbackUri: forward:/fallback/user
+
+
+            - id: RATING_SERVICE
+              uri: lb://RATING_SERVICE
+              predicates:
+                - Path=/rating-service/**
+
+              filters:
+                - name: RequestRateLimiter
+                  args:
+                    key-resolver: "#{@ipKeyResolver}"
+                    redis-rate-limiter.replenishRate: 10
+                    redis-rate-limiter.burstCapacity: 20
+                    redis-rate-limiter.requestedTokens: 1
+
+                - name: Retry
+                  args:
+                    retries: 3
+                    methods:
+                      - GET
+                    exceptions:
+                        - java.io.IOException
+                        - java.util.concurrent.TimeoutException
+                    statuses:
+                      - BAD_GATEWAY
+                      - SERVICE_UNAVAILABLE
+                      - GATEWAY_TIMEOUT
+                    backoff:
+                      firstBackoff: 200ms
+                      maxBackoff: 10s
+                      factor: 2
+                      basedOnPreviousValue: true
+                # This is for circuit breaker
+                - name: CircuitBreaker
+                  args:
+                    name: ratingServiceCircuitBreaker
+                    fallbackUri: forward:/fallback/rating
+
+            - id: HOTEL-SERVICE
+              uri: lb://HOTEL-SERVICE
+              predicates:
+                - Path=/hotel-service/**
+
+              filters:
+                - name: RequestRateLimiter
+                  args:
+                    key-resolver: "#{@ipKeyResolver}"
+                    redis-rate-limiter.replenishRate: 10
+                    redis-rate-limiter.burstCapacity: 20
+                    redis-rate-limiter.requestedTokens: 1
+
+                - name: Retry
+                  args:
+                    retries: 3
+                    methods:
+                      - GET
+                    exceptions:
+                      - java.io.IOException
+                      - java.util.concurrent.TimeoutException
+                      - java.lang.NullPointerException
+                    statuses:
+                      - BAD_GATEWAY
+                      - SERVICE_UNAVAILABLE
+                      - GATEWAY_TIMEOUT
+                    backoff:
+                      firstBackoff: 200ms
+                      maxBackoff: 10s
+                      factor: 2
+                      basedOnPreviousValue: true
+
+                # This is for circuit breaker
+                - name: CircuitBreaker
+                  args:
+                    name: hotelServiceCircuitBreaker
+                    fallbackUri: forward:/fallback/hotel
+
+
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      userServiceCircuitBreaker:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+
+      ratingServiceCircuitBreaker:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+
+      hotelServiceCircuitBreaker:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+
+  timelimiter:
+    instances:
+      userServiceCircuitBreaker:
+        timeout-duration: 20s
+        cancel-running-future: true
+
+      ratingServiceCircuitBreaker:
+        timeout-duration: 20s
+        cancel-running-future: true
+
+      hotelServiceCircuitBreaker:
+        timeout-duration: 20s
+        cancel-running-future: true
+
+
+
+#alternate to the above one
+#resilience4j:
+#  circuitbreaker:
+#
+#    configs:
+#      default:
+#        sliding-window-type: COUNT_BASED
+#        sliding-window-size: 10
+#        minimum-number-of-calls: 5
+#        failure-rate-threshold: 50
+#        wait-duration-in-open-state: 10s
+#        permitted-number-of-calls-in-half-open-state: 3
+#
+#
+#    instances:
+#      userServiceCircuitBreaker:
+#        base-config: default
+#
+#      ratingServiceCircuitBreaker:
+#        base-config: default
+#
+#      hotelServiceCircuitBreaker:
+#        base-config: default
+
+
+# this is the actuator configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+  endpoint:
+    gateway:
+      access: READ_ONLY
+
+# Open telemetry configs (OTEL)
+  tracing:
+    sampling:
+      probability: 1.0
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          endpoint: http://localhost:4318/v1/traces
+
+  otlp:
+    metrics:
+      export:
+        enabled: true
+        url: http://localhost:4318/v1/metrics
+
+
+eureka:
+  instance:
+    prefer-ip-address: true
+  client:
+    fetch-registry: true
+    register-with-eureka: true
+    service-url:
+      defaultZone: http://localhost:8761/eureka
+

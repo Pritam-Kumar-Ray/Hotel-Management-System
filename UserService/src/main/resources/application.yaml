@@ -1,0 +1,112 @@
+server:
+#  It is set in the USER-SERIVICE.YML FILE IN GIT
+#  port: 8081
+  servlet:
+    context-path: /user-service
+
+spring:
+#  profiles:
+#    active:
+#      - dev
+  application:
+    name: USER-SERVICE
+  datasource:
+    url: jdbc:postgresql://localhost:5432/postgres?currentSchema=hm-user-service
+    username: postgres
+    password: root
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+          # Options: create, create-drop, update, validate, none
+          # 'update' updates the schema; use 'validate' or 'none' in production
+      ddl-auto: update
+    show-sql: true
+    # Dialect will be auto-detected
+#    properties:
+#      hibernate:
+#        format_sql: true
+#        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  config:
+    import: optional:configserver:http://localhost:8085 #8085 is the config server's port
+
+  cloud:
+    openfeign:
+      client:
+        config:
+          default:
+            connect-timeout: 30000
+            read-timeout: 30000
+      circuitbreaker:
+        enabled: true
+
+
+
+# Commenting out eureka server configurations as this is common for all the modules so will import it from the git
+#eureka:
+#  instance:
+#    prefer-ip-address: true
+#  client:
+#    fetch-registry: true
+#    register-with-eureka: true
+#
+#    service-url:
+#      defaultZone: http://localhost:8761/eureka
+
+
+eureka:
+  instance:
+    instance-id: ${spring.application.name}:${server.port}
+
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: refresh
+
+# To have the trace id attached for all the logs
+  tracing:
+    sampling:
+      probability: 1.0
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          endpoint: http://localhost:4318/v1/traces
+
+
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+
+  timelimiter:
+    configs:
+      default:
+        timeout-duration: 20s
+        cancel-running-future: false
+
+
+
+
+
+services:
+  urls:
+#    rating-service: http://localhost:8083/rating-service
+#    hotel-service: http://localhost:8082/hotel-service
+
+    rating-service: http://RATING-SERVICE/rating-service
+    hotel-service: http://HOTEL-SERVICE/hotel-service
+
+logging:
+  pattern:
+    correlation: "[${spring.application.name:},traceId=%X{traceId:-},spanId=%X{spanId:-}] "
+  include-application-name: false

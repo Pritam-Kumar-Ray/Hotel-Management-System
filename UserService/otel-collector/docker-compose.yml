@@ -1,0 +1,28 @@
+services:
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: otel-collector
+    command:
+      - "--config=/etc/otelcol-contrib/config.yaml"
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+
+# Url for zinpik is: http://localhost:9411/zipkin
+#  zipkin:
+#    image: openzipkin/zipkin:latest
+#    container_name: zipkin
+#    ports:
+#      - "9411:9411"
+
+# Url for jaeger is : localhost:16686
+  jaeger:
+    image: jaegertracing/jaeger:latest
+    container_name: jaeger_container
+    ports:
+      # Jaeger UI
+      - "16686:16686"
+
